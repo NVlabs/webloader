@@ -1,0 +1,40 @@
+#!/usr/bin/python3
+
+import os
+import sys
+import argparse
+import time
+
+import webloader as wl
+
+parser = argparse.ArgumentParser("""
+Run test_loader on a URL.
+""")
+parser.add_argument("-c", "--count", type=int, default=10)
+parser.add_argument("--skip", type=int, default=10)
+parser.add_argument("--decode", default="rgb8")
+parser.add_argument("--batchsize", type=int, default=64)
+parser.add_argument("--nbatches", type=int, default=10)
+parser.add_argument("--fields", default=None)
+parser.add_argument("--size", type=int, default=1000000)
+parser.add_argument("--processes", type=int, default=0)
+parser.add_argument("--qsize", type=int, default=10)
+parser.add_argument("--shuffle", type=int, default=0)
+parser.add_argument("url")
+args = parser.parse_args()
+
+if args.decode.lower() == "true": args.decode = True
+elif args.decode.lower() == "false": args.decode = False
+
+kw = dict(fields=args.fields, shuffle=args.shuffle, batch_size=args.batchsize)
+if args.processes > 0:
+    source = wl.MultiWebLoader(args.url, args.size, 
+                               processes=args.processes,
+                               use_torch_mp=False, queue_size=args.qsize,
+                               **kw)
+else:
+    source = wl.WebLoader(args.url, args.size, **kw)
+
+wl.loader_test(source, nbatches=args.count, skip=args.skip)
+
+os._exit(0)

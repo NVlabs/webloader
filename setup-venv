@@ -16,7 +16,6 @@ dieget() {
 type pip3 || die "install pip3"
 python3 -m virtualenv --version || die "install virtualenv for python3"
 
-test -d ../torchtrainers || dieget torchtrainers
 test -d venv || python3 -m virtualenv venv
 
 source venv/bin/activate
@@ -49,7 +48,7 @@ pip3 install torchvision
 pip3 install tensorflow-gpu
 pip3 install keras
 
-pip3 install ../torchtrainers
+pip3 install git+git://github.com/NVlabs/torchtrainers.git
 
 echo
 echo activate with: source ./venv/bin/activate
