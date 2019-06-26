@@ -50,6 +50,7 @@ fi
 docker run \
     --runtime=nvidia \
     --network host \
+    -e PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
     -v /etc/passwd:/etc/passwd \
     -v /etc/group:/etc/group \
     -v $HOME:$HOME \
