@@ -346,6 +346,11 @@ class MultiWebLoader(object):
         self.jobs = None
         self.queue = None
 
+def asdict(l):
+    if isinstance(l, dict):
+        return l
+    return {i: v for i, v in enumerate(l)}
+
 def loader_test(source, nbatches=10, skip=10):
     """Run a test against a loader."""
     for i, sample in enumerate(source):
@@ -354,19 +359,29 @@ def loader_test(source, nbatches=10, skip=10):
     start = time.time()
     count = 0
     for i, sample in enumerate(source):
-        xs = sample[0]
-        count += len(xs)
+        sample = asdict(sample)
+        for xs in sample.values():
+            if isinstance(xs, (list, TorchTensor, ndarray)):
+                count += len(xs)
+                break
         if i >= nbatches-1: break
     finish = time.time()
 
     delta = finish-start
     print("{:.2f} samples/s {:.2f} batches/s".format(count/delta, nbatches/delta))
-    for index, a in enumerate(sample):
-        if isinstance(a, TorchTensor):
+
+    print("Example:")
+    sample = asdict(sample)
+    for index, a in sorted(sample.items()):
+        if isinstance(index, str) and index[0]=="_":
+            if isinstance(a, list):
+                print(index, a[0], "...")
+            else:
+                print(index, str(a)[:100], "...")
+        elif isinstance(a, TorchTensor):
             print(index, ":", "Tensor", a.shape, a.device, a.dtype, a.min().item(), a.max().item())
         elif isinstance(a, ndarray):
             import numpy as np
             print(index, ":", "ndarray", a.shape, a.dtype, np.amin(a), np.amax(a))
         else:
             print(index, ":", type(a))
-
