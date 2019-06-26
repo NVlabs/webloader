@@ -9,7 +9,7 @@ WebLoader:
 - can read data sets from the file system, web servers, and object store
 - performs large, sequential reads
 - performs distributed, parallel I/O across many disks
-- requires no ``volume plugins'' or ``file system mounts''
+- requires no "volume plugins" or "file system mounts"
 - requires no local disk space or caches
 - operates directly on POSIX tar/tgz archives of training data
 - comes with command line tools for large scale data transformations
