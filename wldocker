@@ -1,0 +1,61 @@
+#!/bin/bash
+
+cat > .Dockerfile <<EOF
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04
+
+ENV LC_ALL=C
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get -qqy update
+RUN apt-get install -qqy git curl dtrx buffer mbuffer pv daemon expect mercurial
+RUN apt-get install -qqy graphicsmagick
+RUN apt-get install -qqy wamerican
+RUN apt-get install -qqy python3 
+RUN apt-get install -qqy python3-numpy
+RUN apt-get install -qqy python3-scipy
+RUN apt-get install -qqy python3-matplotlib 
+RUN apt-get install -qqy python3-pip
+RUN apt-get install -qqy python3-pil
+RUN apt-get install -qqy python3-imageio
+
+ENV PATH=$PATH:/usr/local/google-cloud-sdk/bin
+RUN curl https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-217.0.0-linux-x86_64.tar.gz -o /tmp/gcloud.tgz && \
+    rm -rf /usr/local/google-cloud-sdk && \
+    mkdir /usr/local/google-cloud-sdk && \
+    tar -C /usr/local -zxf /tmp/gcloud.tgz google-cloud-sdk && \
+    rm -rf /tmp/gcloud.tgz && \
+    /usr/local/google-cloud-sdk/install.sh -q --path-update true && \
+    gcloud components update && \
+    gcloud components install gsutil
+
+RUN pip3 install six future msgpack pyzmq simplejson braceexpand
+RUN pip3 install ipython
+
+RUN pip3 install torch torchvision
+
+RUN pip3 install git+git://github.com/NVlabs/webloader
+RUN pip3 install git+git://github.com/NVlabs/torchtrainers
+EOF
+
+if docker build -t wldocker - < .Dockerfile; then
+    true
+else
+    echo
+    echo "container build failure:"
+    echo
+    tail -30 wldocker.log
+    exit 1
+fi
+
+docker run \
+    --runtime=nvidia \
+    --network host \
+    -v /etc/passwd:/etc/passwd \
+    -v /etc/group:/etc/group \
+    -v $HOME:$HOME \
+    -v `pwd`:`pwd` \
+    -w `pwd` \
+    -u $(id -u):$(id -g) \
+    -i \
+    -t wldocker \
+    "$@"
