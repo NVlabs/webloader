@@ -1,0 +1,112 @@
+#!/usr/bin/python3
+
+import sys
+import argparse
+import imp
+import os
+
+import webloader as wl
+import numpy as np
+from webloader import filters, gopen, utils
+import multiprocessing
+
+parser = argparse.ArgumentParser("Apply python code to each sample.")
+parser.add_argument("-H", "--helpfun", default=None)
+parser.add_argument("-C", "--precode", default=[], nargs="*")
+parser.add_argument("-c", "--code", default=None)
+parser.add_argument("-F", "--format", default="rgb")
+parser.add_argument("-P", "--pipeline", default="")
+parser.add_argument("-l", "--load", default=None)
+parser.add_argument("-L", "--loadarg", default=None)
+parser.add_argument("-e", "--every", type=int, default=1000)
+parser.add_argument("-p", "--parallel", type=int, default=0)
+parser.add_argument("-O", "--ordered", action="store_true")
+parser.add_argument("-o", "--output", default=None)
+parser.add_argument("--only", type=int, default=int(1e12))
+parser.add_argument("--nokeycheck", action="store_false")
+parser.add_argument("input", nargs="?")
+args = parser.parse_args()
+
+if args.input is None:
+    sys.exit(0)
+
+for c in args.precode:
+    exec(c)
+
+if args.helpfun:
+    print(help(eval(args.helpfun)))
+    sys.exit(0)
+
+
+decode = utils.autodecoder(args.format)
+
+source = gopen.sharditerator(args.input, decode=decode, epochs=1)
+
+for code in args.precode:
+    exec(code)
+
+if args.pipeline != "":
+    source = eval(args.pipeline)(source)
+
+sink = None
+if args.output is not None:
+    sink = gopen.shardwriter(args.output)
+
+mapper = None
+if args.load is not None:
+    assert args.loadarg is None
+    fname = os.path.basename(args.load)
+    name, ext = os.path.splitext(fname)
+    with open(args.load) as stream:
+        mapper = imp.load_module("mapper", stream, args.load,
+                                 (ext, "r", imp.PY_SOURCE))
+elif args.loadarg is not None:
+    assert args.load is None
+    with io.StringIO(args.loadarg) as stream:
+        mapper = imp.load_module("mapper", stream, "__loadarg.py",
+                                 (ext, "r", imp.PY_SOURCE))
+
+def process_sample(sample, mapper=mapper, code=args.code):
+    i, sample = sample
+    if mapper is not None:
+        sample = mapper.transform(sample)
+    _ = sample
+    if code is not None:
+        exec(args.code)
+    return i, sample
+
+if args.parallel==0:
+    processed = (process_sample(x) for x in enumerate(source))
+else:
+    pool = multiprocessing.Pool(args.parallel)
+    if args.ordered:
+        processed = pool.imap(process_sample, enumerate(source))
+    else:
+        processed = pool.imap_unordered(process_sample, enumerate(source))
+
+allkeys = set()
+
+for j, (i, sample) in enumerate(processed):
+    if j>=args.only: break
+    if isinstance(sample, dict):
+        sample = [sample]
+    elif isinstance(sample, list):
+        assert isinstance(sample[0], dict)
+    else:
+        print("sample must be either dict or list, got:")
+        print(sample)
+        sys.exit(1)
+    if i%args.every==0:
+        print(i, j, sample[0].get("__key__"))
+        sys.stdout.flush()
+    if sink is not None:
+        for s in sample:
+            assert "__key__" in s
+            if not args.nokeycheck:
+                assert s["__key__"] not in allkeys
+                allkeys.add(s["__key__"])
+            sink.write(s)
+    sys.stdout.flush()
+
+if sink is not None:
+    sink.close()

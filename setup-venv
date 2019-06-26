@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -e
+set -x
+
+die() {
+    echo "$*" 1>&2
+    exit 1
+}
+dieget() {
+    echo "$1: missing repository"
+    echo "hg clone http://bragi.nvidia.com/~tmb/$1"
+    exit 2
+}
+
+type pip3 || die "install pip3"
+python3 -m virtualenv --version || die "install virtualenv for python3"
+
+test -d ../torchtrainers || dieget torchtrainers
+test -d venv || python3 -m virtualenv venv
+
+source venv/bin/activate
+
+pip3 install numpy
+#pip3 install scipy
+#pip3 install scikit-image
+#pip3 install scikit-learn
+
+pip3 install future
+pip3 install six
+pip3 install braceexpand
+pip3 install imageio
+pip3 install Pillow
+pip3 install simplejson
+
+pip3 install matplotlib
+
+pip3 install ipython
+pip3 install jupyter
+#pip3 install bash_kernel
+#pip3 install sos
+#pip3 install sos-notebook
+#pip3 install sos-python
+#pip3 install sos-bash
+
+pip3 install torch
+pip3 install torchvision
+
+pip3 install tensorflow-gpu
+pip3 install keras
+
+pip3 install ../torchtrainers
+
+echo
+echo activate with: source ./venv/bin/activate
+echo

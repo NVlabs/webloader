@@ -1,0 +1,70 @@
+#!/usr/bin/python3
+
+import os
+import sys
+import argparse
+import imp
+import time
+
+import webloader as dli
+import matplotlib
+import numpy as np
+from webloader import  loader, utils
+import pickle
+
+parser = argparse.ArgumentParser("""
+Dump data from a web dataset.
+""")
+parser.add_argument("--size", type=int, default=100000,
+                    help="size of dataset (not used)")
+parser.add_argument("--shuffle", type=int, default=0,
+                    help="shuffle prior to sampling")
+parser.add_argument("-S", "--select", default="True",
+                    help="expression that must evaluate to true before saving")
+parser.add_argument("-v", "--verbose", action="store_true",
+                    help="output more information")
+parser.add_argument("url",
+                    help="dataset URL")
+parser.add_argument("field",
+                    help="field to be selected")
+parser.add_argument("skip", type=int, default=0, nargs="?",
+                    help="number of records to skip initially")
+args = parser.parse_args()
+
+class Record(object):
+    def __init__(self, d):
+        self.__dict__ = d
+    def __getitem__(self, attr):
+        return self.__dict__[attr]
+    def __setitem__(self, attr, value):
+        self.__dict__[attr] = value
+
+source = loader.WebLoader(args.url, args.size,
+                          decode=False,
+                          shuffle=args.shuffle,
+                          batch_size=0)
+
+source = iter(source)
+
+for i, sample in enumerate(source):
+    assert isinstance(sample, dict), sample
+    if args.verbose and i==0:
+        print("KEYS:", repr(list(sample.keys())), file=sys.stderr)
+    if args.verbose:
+        print(i, sample.get("__key__"), file=sys.stderr)
+    if i >= args.skip: break
+
+for sample in source:
+    assert isinstance(sample, dict), sample
+    if args.verbose:
+        print("*", sample.get("__key__"), args.field, file=sys.stderr)
+    _ = Record(sample)
+    if not eval(args.select):
+        continue
+    result = utils.getfirst(sample, args.field, None)
+    if result is not None:
+        assert isinstance(result, bytes)
+        with os.fdopen(sys.stdout.fileno(), "wb", closefd=False) as stdout:
+            stdout.write(result)
+            stdout.flush()
+        break

@@ -1,0 +1,103 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+
+import sys
+import argparse
+import imp
+import time
+
+import webloader as dli
+import matplotlib
+import numpy as np
+from numpy import inf
+from webloader import  loader
+
+parser = argparse.ArgumentParser("""
+Provide summary information about a web dataset.
+""")
+parser.add_argument("--size", type=int, default=100000)
+parser.add_argument("-c", "--count", type=int, default=1000)
+parser.add_argument("-d", "--decode", default="rgb8")
+parser.add_argument("url")
+args = parser.parse_args()
+
+if args.decode.lower() == "true": args.decode = True
+elif args.decode.lower() == "false": args.decode = False
+
+source = loader.WebLoader(args.url, args.size, decode=args.decode)
+
+def summarize(v, n=35):
+    v = str(v)
+    if len(v) > n:
+        v = v[:n//2] + "..." + v[-n//2:]
+    return v
+
+def minmax(l):
+    l = sorted(list(l))
+    if l==[]:
+        return None
+    elif l[0]==l[-1]:
+        return l[0]
+    else:
+        return l[0], l[-1]
+
+class Info(object):
+    def __init__(self):
+        self.types = set()
+        self.dtypes = set()
+        self.shapes = set()
+        self.lens = set()
+        self.lo = None
+        self.hi = None
+    def add(self, x):
+        self.types.add(type(x))
+        if hasattr(x, "shape"):
+            self.shapes.add(x.shape)
+        if isinstance(x, np.ndarray):
+            if self.lo is None:
+                self.lo, self.hi = inf, -inf
+            self.dtypes.add(x.dtype)
+            y = np.amin(x)
+            if y < self.lo: self.lo = y
+            y = np.amax(x)
+            if y > self.hi: self.hi = y
+        else:
+            if hasattr(x, "__len__"):
+                self.lens.add(len(x))
+            if self.lo is None:
+                self.lo, self.hi = x, x
+            try:
+                if x < self.lo: self.lo = x
+                if x > self.hi: self.hi = x
+            except:
+                pass
+
+
+keysets = set()
+info = {}
+
+for i, sample in enumerate(source):
+    assert isinstance(sample, dict), sample
+    if i>=args.count: break
+    keynames = " ".join(sorted([x for x in sample.keys() if x[0]!="_"]))
+    keysets.add(keynames)
+    for k, v in sample.items():
+        if k not in info: info[k] = Info()
+        info[k].add(v)
+
+print([set(k.split()) for k in keysets])
+
+for k in sorted(info.keys()):
+    print(f"\n{k}\n")
+    v = info[k]
+    types = {x.__name__ for x in v.types}
+    print(f"\ttypes\t{types}")
+    if len(v.dtypes)>0:
+        dtypes = {x.name for x in v.dtypes}
+        print(f"\tdtypes\t{dtypes}")
+    if len(v.lens)>0: print(f"\tlen\t{minmax(v.lens)}")
+    if len(v.shapes)>0: print(f"\tshape\t{minmax(v.shapes)}")
+    lo = summarize(v.lo)
+    hi = summarize(v.hi)
+    print(f"\trange\t{lo}\t{hi}")

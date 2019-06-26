@@ -1,0 +1,204 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+
+import argparse
+import atexit
+import glob
+import imp
+import os
+import shutil
+import sys
+import time
+import re
+from itertools import groupby, islice
+from multiprocessing import Pool
+
+import matplotlib
+import numpy as np
+import simplejson
+from webloader import gopen, tarrecords, utils
+
+parser = argparse.ArgumentParser("Run a command line tool over all samples.")
+parser.add_argument("-v", "--verbose", action="store_true",
+                    help="output extra information")
+parser.add_argument("-q", "--silent", action="store_true",
+                    help="extra quiet")
+parser.add_argument("-c", "--command", default=None,
+                    help="command to run for each sample (working dir = sample)")
+parser.add_argument("-S", "--script", default=None,
+                    help="script to run for each sample (working dir = sample)")
+parser.add_argument("-w", "--working_dir", default="__{pid}__",
+                    help="temporary working dir")
+parser.add_argument("-b", "--base", default="sample",
+                    help="base to substitute for __key__ (default=\"sample\")")
+parser.add_argument("-o", "--output", default=None,
+                    help="output shard file")
+parser.add_argument("-f", "--fields", default=None,
+                    help="fields to run on (default=all, space separated)")
+parser.add_argument("-F", "--fieldmode", default="ignore",
+                    help="how to handle missing fields (error or ignore)")
+parser.add_argument("-p", "--parallel", default=0, type=int,
+                    help="execute scripts in parallel")
+parser.add_argument("-e", "--error-handling", default="skip",
+                    help="how to handle errors in scripts (ignore, skip, abort)")
+parser.add_argument("-E", "--exclude", default=None,
+                    help="exclude anything matching this from output")
+parser.add_argument("-I", "--include", default=None,
+                    help="include only files matching this in output")
+parser.add_argument("-s", "--separator", default="",
+                    help="separator between key and new file bases")
+parser.add_argument("--count", default="",
+                    help="limit the #samples processed (for testing)")
+parser.add_argument("--interpreter", default="bash",
+                    help="interpreter used for script argument")
+parser.add_argument("input")
+args = parser.parse_args()
+
+if args.script:
+    assert not args.command
+    # handle relative paths not on $PATH specially
+    path = os.path.abspath(args.script)
+    if os.path.exists(path):
+        args.command = f"{args.interpreter} '{path}'"
+    else:
+        args.command = args.script
+elif args.command:
+    assert not args.script
+else:
+    sys.exit("most provide either --command or --script")
+
+args.working_dir = args.working_dir.format(pid=str(os.getpid()))
+
+if args.fields is not None:
+    fields = set(f for f in args.fields.split(","))
+else:
+    fields = None
+
+class ChDir(object):
+    def __init__(self, path):
+        self.old_dir = os.getcwd()
+        self.new_dir = path
+    def __enter__(self):
+        os.chdir(self.new_dir)
+    def __exit__(self, *args):
+        os.chdir(self.old_dir)
+
+def cleanup():
+    shutil.rmtree(args.working_dir)
+
+atexit.register(cleanup)
+
+inputs = gopen.sharditerator_once(args.input, decode=False)
+if args.count != "":
+    count = eval("("+args.count+")")
+    if isinstance(count, int):
+        inputs = islice(inputs, count)
+    elif isinstance(count, tuple):
+        inputs = islice(inputs, *count)
+    else:
+        raise ValueError(f"{args.count}: bad --count")
+
+def filebase(fname):
+    return re.sub(r"\.[^/]*$", "", fname)
+
+def fullext(fname):
+    return re.sub(r"(.*/)*.*?\.", "", fname)
+
+def regquote(s):
+   return re.sub(r'([][.^$*+])', r'\\\1', s)
+
+def read_binary(fname):
+    with open(fname, "rb") as stream:
+        return stream.read()
+
+def write_binary(fname, data):
+    with open(fname, "wb") as stream:
+        if isinstance(data, str): data = data.encode("utf-8")
+        stream.write(data)
+
+def proc_sample(sample, index=0, fields=None, separator="", fieldmode="ignore"):
+    if fields is not None:
+        if fieldmode == "ignore":
+            sample = {k: v for k, v in sample.items() if k in fields or k[0]=="_"}
+        elif fieldmode == "error":
+            sample = {k: sample[v] for k in fields}
+    old_sample = sample
+    dirname = os.path.join(args.working_dir, "_%08d" % index)
+    os.mkdir(dirname)
+    with ChDir(dirname):
+        for k, v in sample.items():
+            fname = args.base + "." + k if k[0]!="_" else k
+            write_binary(fname, v)
+        status = os.system(args.command)
+        if status != 0:
+            if args.error_handling == "ignore":
+                if not args.silent:
+                    print("ignore", status, sample.get("__key__", "?"))
+                pass
+            elif args.error_handling == "skip":
+                if not args.silent:
+                    print("skip", status, sample.get("__key__", "?"))
+                return []
+            else:
+                if not args.silent:
+                    print("abort", status, sample.get("__key__", "?"))
+                assert status == 0, status
+        files = sorted([fname for fname in glob.glob("*.*") if os.path.isfile(fname)])
+        if args.exclude is not None:
+            files = [fname for fname in files if not re.search(args.exclude, fname)]
+        if args.include is not None:
+            files = [fname for fname in files if re.search(args.include, fname)]
+        bases = sorted(set(map(filebase, files)))
+        samples = []
+        for base in bases:
+            matching = [fname for fname in files if fname.startswith(base+".")]
+            extra_key = base
+            if extra_key.startswith(args.base):
+                extra_key = extra_key[len(args.base):]
+            sample = {}
+            if extra_key != "":
+                sample["__key__"] = old_sample["__key__"] + args.separator + extra_key
+            else:
+                sample["__key__"] = old_sample["__key__"]
+            for fname in matching:
+                assert fname.startswith(base)
+                key = fullext(fname)
+                value = read_binary(fname)
+                sample[key] = value
+            samples.append(sample)
+    shutil.rmtree(dirname)
+    return samples
+
+def proc_sample1(arg):
+    i, sample = arg
+    return proc_sample(sample, separator=args.separator, index=i, fields=fields, fieldmode=args.fieldmode)
+
+assert not os.path.exists(args.working_dir)
+os.mkdir(args.working_dir)
+
+sink = None
+if args.output is not None:
+    sink = gopen.shardwriter(args.output, encode=False)
+
+def handle_result(new_samples):
+    global sink
+    if args.verbose:
+        for s in new_samples:
+            keyinfo = [k for k in s.keys() if k[0]!="_"]
+            print(s.get("__key__"), " ".join(keyinfo))
+    if sink is not None:
+        for s in new_samples:
+            sink.write(s)
+
+if args.parallel==0:
+    for i, sample in enumerate(inputs):
+        new_samples = proc_sample1((i, sample))
+        handle_result(new_samples)
+elif args.parallel>0:
+    with Pool(processes=args.parallel) as pool:
+        for new_samples in pool.imap_unordered(proc_sample1, enumerate(inputs)):
+            handle_result(new_samples)
+
+if sink is not None:
+    sink.close()

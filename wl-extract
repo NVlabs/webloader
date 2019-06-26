@@ -1,0 +1,94 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+
+import sys
+import argparse
+import imp
+import time
+
+import webloader as dli
+import matplotlib
+import numpy as np
+from webloader import  loader, utils
+import pickle
+
+parser = argparse.ArgumentParser("""
+Dump data from a web dataset.
+""")
+parser.add_argument("--size", type=int, default=100000,
+                    help="size of dataset (not used)")
+parser.add_argument("--shuffle", type=int, default=0,
+                    help="shuffle prior to sampling")
+parser.add_argument("-f", "--fields", default="__key__",
+                    help="field to extract and save")
+parser.add_argument("-c", "--count", type=int, default=999999999,
+                    help="number of records to save")
+parser.add_argument("-s", "--skip", type=int, default=0,
+                    help="number of records to skip initially")
+parser.add_argument("-S", "--select", default="True",
+                    help="expression that must evaluate to true before saving")
+parser.add_argument("-d", "--decode", default="rgb8",
+                    help="image decoding format")
+parser.add_argument("-F", "--format", default="tsv",
+                    help="output format")
+parser.add_argument("-P", "--proc", default=None)
+parser.add_argument("url",
+                    help="dataset URL")
+args = parser.parse_args()
+
+source = loader.WebLoader(args.url, args.size,
+                                 shuffle=args.shuffle,
+                                 batch_size=0)
+
+fields = utils.parse_field_spec(args.fields)
+
+class Record(object):
+    def __init__(self, d):
+        self.__dict__ = d
+    def __getitem__(self, attr):
+        return self.__dict__[attr]
+    def __setitem__(self, attr, value):
+        self.__dict__[attr] = value
+
+def writefile(base, data):
+    print(base, type(data))
+    if isinstance(data, np.ndarray):
+        print(data.shape)
+        if data.ndim==2 or data.ndim==3 and data.shape[2] in [3, 4]:
+            with open(base+".png", "wb") as stream:
+                stream.write(utils.pildumps(data))
+        else:
+            with open(base+".pyd", "wb") as stream:
+                pickle.dump(data, stream)
+    elif isinstance(data, (int, float, str)):
+        with open(base+".txt", "w") as stream:
+            stream.write(str(data))
+    elif isinstance(data, bin):
+        with open(base+".bin", "wb") as stream:
+            stream.write(data)
+    else:
+        with open(base+".pyd", "wb") as stream:
+            pickle.dump(data, stream)
+
+saved = 0
+for i, sample in enumerate(source):
+    assert isinstance(sample, dict), sample
+    if i < args.skip: continue
+    if saved > args.count: break
+    _ = Record(sample)
+    if not eval(args.select):
+        continue
+    if args.proc is not None:
+        exec(args.proc)
+    if "__source__" not in sample:
+        sample["__source__"] = args.url
+    result = [utils.getfirst(sample, f, None) for f in fields]
+    if args.format=="tsv":
+        result = "\t".join([str(x) for x in result])
+        print(result)
+    elif args.format=="json":
+        result = simplejson.dumps(result)
+        print(result)
+    else:
+        raise ValueError(f"{args.format}: unknown output format")

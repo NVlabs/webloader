@@ -1,0 +1,32 @@
+#!/usr/bin/python
+
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
+from past.utils import old_div
+import argparse
+
+from . import zcom
+from . import gopen
+from . import paths
+
+class BufferedSet(object):
+    def __init__(self, source, fields=None, bufsize=50000, repeat=3):
+        self.source = source
+        self.fields = fields
+        self.buffer = [None] * bufsize
+        self.counts = [9999] * bufsize
+    def fetch(self):
+        return self.source.next()
+    def __getitem__(self, index):
+        if self.counts[index] >= self.repeat:
+            sample = self.fetch()
+            self.buffer[index] = sample
+            self.counts[index] = 1
+        else:
+            sample = self.buffer[index]
+            self.counts[index] += 1
+        return sample
+    def __len__(self):
+        assert len(self.buffer)==len(self.counts)
+        return self.buffer

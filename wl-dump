@@ -1,0 +1,84 @@
+#!/usr/bin/python3
+
+from __future__ import print_function
+
+import sys
+import argparse
+import imp
+import time
+
+import webloader as dli
+import matplotlib
+import numpy as np
+#from pylab import *
+from webloader import  loader, utils
+import pickle
+import re
+
+parser = argparse.ArgumentParser("""
+Dump data from a web dataset.
+""")
+parser.add_argument("--size", type=int, default=100000,
+                    help="size of dataset (not used)")
+parser.add_argument("--batch-size", type=int, default=0,
+                    help="batch size (0=no batching)")
+parser.add_argument("-o", "--output", default="out-{index:06d}",
+                    help="base name for output files")
+parser.add_argument("--shuffle", type=int, default=0,
+                    help="shuffle prior to sampling")
+parser.add_argument("-f", "--field", default="png;jpg;ppm;jpeg",
+                    help="field to extract and save")
+parser.add_argument("-c", "--count", type=int, default=1,
+                    help="number of records to save")
+parser.add_argument("-s", "--skip", type=int, default=0,
+                    help="number of records to skip initially")
+parser.add_argument("-S", "--select", default="True",
+                    help="expression that must evaluate to true before saving")
+parser.add_argument("-d", "--decode", default="rgb8",
+                    help="image decoding format")
+parser.add_argument("url",
+                    help="dataset URL")
+args = parser.parse_args()
+
+source = loader.WebLoader(args.url, args.size,
+                                 shuffle=args.shuffle,
+                                 batch_size=args.batch_size)
+
+def writefile(base, data):
+    print(base, type(data))
+    if isinstance(data, np.ndarray):
+        print(data.shape)
+        if data.ndim==2 or data.ndim==3 and data.shape[2] in [3, 4]:
+            with open(base+".png", "wb") as stream:
+                stream.write(utils.pildumps(data))
+        else:
+            with open(base+".pyd", "wb") as stream:
+                pickle.dump(data, stream)
+    elif isinstance(data, (int, float, str)):
+        with open(base+".txt", "w") as stream:
+            stream.write(str(data))
+    elif isinstance(data, bin):
+        with open(base+".bin", "wb") as stream:
+            stream.write(data)
+    else:
+        with open(base+".pyd", "wb") as stream:
+            pickle.dump(data, stream)
+
+saved = 0
+for i, sample in enumerate(source):
+    if i < args.skip:
+        continue
+    if saved >= args.count:
+        break
+    data = utils.getfirst(sample, args.field)
+    if data is None:
+        print(sample.get("__key__"), ": no", args.field)
+        continue
+    _ = sample
+    if not eval(args.select):
+        print(sample.get("__key__"), ": not selected")
+        continue
+    quoted_key = re.sub(r'/', "%2F", sample.get("__key__", "?"))
+    fname = args.output.format(index=i, key=quoted_key)
+    writefile(fname, data)
+    saved += 1
