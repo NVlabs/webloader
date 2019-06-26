@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -e
-set -x
 
 die() {
     echo "$*" 1>&2
@@ -13,6 +12,13 @@ dieget() {
     exit 2
 }
 
+pipx() {
+    echo
+    echo "################ pip3 $* ################"
+    echo
+    pip3 "$@"
+}
+
 type pip3 || die "install pip3"
 python3 -m virtualenv --version || die "install virtualenv for python3"
 
@@ -20,36 +26,38 @@ test -d venv || python3 -m virtualenv venv
 
 source venv/bin/activate
 
-pip3 install numpy
-#pip3 install scipy
-#pip3 install scikit-image
-#pip3 install scikit-learn
+pipx install virtualenv
+pipx install numpy
+#pipx install scipy
+#pipx install scikit-image
+#pipx install scikit-learn
 
-pip3 install future
-pip3 install six
-pip3 install braceexpand
-pip3 install imageio
-pip3 install Pillow
-pip3 install simplejson
+pipx install future
+pipx install six
+pipx install braceexpand
+pipx install imageio
+pipx install Pillow
+pipx install simplejson
 
-pip3 install matplotlib
+pipx install matplotlib
 
-pip3 install ipython
-pip3 install jupyter
-#pip3 install bash_kernel
-#pip3 install sos
-#pip3 install sos-notebook
-#pip3 install sos-python
-#pip3 install sos-bash
+pipx install ipython
+pipx install jupyter
+#pipx install bash_kernel
+#pipx install sos
+#pipx install sos-notebook
+#pipx install sos-python
+#pipx install sos-bash
 
-pip3 install torch
-pip3 install torchvision
+pipx install torch
+pipx install torchvision
 
-pip3 install tensorflow-gpu
-pip3 install keras
+pipx install tensorflow-gpu
+pipx install keras
 
-pip3 install git+git://github.com/NVlabs/torchtrainers.git
+pipx install git+git://github.com/NVlabs/torchtrainers.git
 
 echo
-echo activate with: source ./venv/bin/activate
+echo activate with:
+echo source ./venv/bin/activate
 echo
