@@ -89,6 +89,8 @@ def transform_with(sample, transformers):
     :param transformers: list of functions
 
     """
+    assert not isinstance(sample, dict)
+    assert isinstance(sample, (tuple, list))
     if transformers is None or len(transformers) == 0:
         return sample
     result = list(sample)
