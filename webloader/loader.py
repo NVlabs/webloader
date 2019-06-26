@@ -200,6 +200,10 @@ class WebLoader(object):
             pipeline = filters.compose(pipeline)
         self.pipeline = pipeline
         self.fields = utils.parse_field_spec(fields) if fields is not None else None
+        if fields is None:
+            assert transforms is None, "cannot specify transforms without fields"
+            assert batch_transforms is None, "cannot specify batch transforms without fields"
+            assert converters is None, "cannot specify converters without fields"
         self.transforms = listify(transforms)
         self.batch_transforms = listify(batch_transforms)
         converters = converter_table.get(converters, converters)
@@ -244,8 +248,12 @@ class WebLoader(object):
                     finished = True
                     break
                 if self.batch_transforms is not None:
+                    if isinstance(sample, dict):
+                        raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
                     sample = transform_with(sample, self.batch_transforms)
                 if self.converters is not None:
+                    if isinstance(sample, dict):
+                        raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
                     sample = transform_with(sample, self.converters)
                 self.last_sample = sample
                 total += max(1, self.batch_size)
