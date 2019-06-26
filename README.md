@@ -20,10 +20,9 @@ Getting Started
 
 Make sure you have `python3` installed.
 
-Then, you can setup your environment with `./setup-venv`
+Then, you can setup your environment with `./setup-venv`. Afterwards, you can start up the notebook server with `./start-notebook` and look at the example notebooks.
 
-Afterwards, you can start up the notebook server with `./start-notebook`
-and look at the example notebooks.
+You can also run everything from Docker with `./wldocker bash`, `./wldocker jupyter notebook`, or `./wldocker python3 script.py`.
 
 Imagenet Training
 =================
