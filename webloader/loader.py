@@ -275,7 +275,7 @@ def make_loader(args, kw, queue, index):
 
 def maybe_gpu(a, device=None, non_blocking=False):
     if isinstance(a, TorchTensor):
-        return a.to(device=device, non_blocking=non_blocking)
+        return a.contiguous().to(device=device, non_blocking=non_blocking)
     else:
         return a
 
@@ -294,7 +294,7 @@ def async_gpu_transfer(device="cuda", inflight=2):
     return f
 
 multi_pipes = dict(
-    async_gpu_transfer=async_gpu_transfer
+    async_gpu_transfer=async_gpu_transfer()
 )
 
 class MultiWebLoader(object):
@@ -310,13 +310,6 @@ class MultiWebLoader(object):
         :param **kw: other keyword arguments are passed to WebLoader
 
         """
-        if use_torch_mp:
-            try:
-                import torch.multiprocessing as multiprocessing
-            except:
-                import multiprocessing
-        else:
-            import multiprocessing
         assert "epochs" not in kw, kw
         kw["epochs"] = 999999999
         self.size = size
@@ -334,7 +327,10 @@ class MultiWebLoader(object):
 
         Note that multiple iterators share the same input queue."""
         if self.use_torch_mp:
-            import torch.multiprocessing as mp
+            try:
+                import torch.multiprocessing as mp
+            except:
+                import multiprocessing as mp
         else:
             import multiprocessing as mp
         while True:
