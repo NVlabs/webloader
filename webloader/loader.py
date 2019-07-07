@@ -12,6 +12,7 @@ import os
 import sys
 import logging
 import time
+import collections
 
 from past.utils import old_div
 
@@ -272,9 +273,33 @@ def make_loader(args, kw, queue, index):
     for sample in data:
         queue.put(sample)
 
+def maybe_gpu(a, device=None, non_blocking=False):
+    if isinstance(a, TorchTensor):
+        return a.to(device=device, non_blocking=non_blocking)
+    else:
+        return a
+
+def async_gpu_transfer(device="cuda", inflight=2):
+    def f(source):
+        q = collections.deque()
+        while True:
+            while len(q) < inflight:
+                data = next(source)
+                if isinstance(data, (tuple, list)):
+                    data = [maybe_gpu(a, device, True) for a in data]
+                elif isinstance(data, dict):
+                    data = {k: maybe_gpu(a, device, True) for k, a in data.items()}
+                q.append(data)
+            yield q.popleft()
+    return f
+
+multi_pipes = dict(
+    async_gpu_transfer=async_gpu_transfer
+)
+
 class MultiWebLoader(object):
     """Multiprocessing version of WebLoader """
-    def __init__(self, urls, size, processes=4, use_torch_mp=False, queue_size=10, **kw):
+    def __init__(self, urls, size, processes=4, use_torch_mp=False, queue_size=10, multi_pipe=None, **kw):
         """Instantiate multiple WebLoaders in parallel.
 
         :param urls: input URLs
@@ -300,9 +325,11 @@ class MultiWebLoader(object):
         self.use_torch_mp = use_torch_mp
         self.processes = processes
         self.queue_size = queue_size
+        self.multi_pipe = multi_pipes.get(multi_pipe, multi_pipe)
+        assert self.multi_pipe is None or callable(self.multi_pipe)
         self.jobs = None
 
-    def __iter__(self):
+    def raw_iter(self):
         """Iterate over samples.
 
         Note that multiple iterators share the same input queue."""
@@ -329,16 +356,27 @@ class MultiWebLoader(object):
                 self.terminate()
                 #print("done terminating")
 
+    def __iter__(self):
+        result = self.raw_iter()
+        if self.multi_pipe is not None:
+            result = self.multi_pipe(result)
+        return result
+
     def __len__(self):
         """ """
         return self.size
 
-    def terminate(self):
+    def terminate(self, soft=False):
         """Terminate all subprocesses"""
         for job in self.jobs:
             try:
-                job.terminate()
-                job.join()
+                if soft:
+                    job.terminate()
+                    job.join()
+                else:
+                    os.kill(job.pid, 15)
+                    time.sleep(0.1)
+                    os.kill(job.pid, 9)
             except Exception as exn:
                 print(job)
                 print(exn)

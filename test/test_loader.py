@@ -98,3 +98,50 @@ def test_loader_test():
                                  fields="png cls".split(),
                                  batch_size=32)
     loader.loader_test(wl)
+
+def test_MultiWebLoader_torch():
+    import torch
+    wl  = loader.MultiWebLoader("testdata/sample.tgz", 90,
+                                 fields="png cls".split(),
+                                 batch_size=32,
+                                 converters=loader.totorch())
+    for sample in wl :
+        break
+    assert len(sample) == 2
+    assert isinstance(sample[0], torch.Tensor), sample[0]
+    assert isinstance(sample[1], torch.Tensor), sample[1]
+    assert sample[0].dtype == torch.float32, sample[0]
+    assert sample[1].dtype == torch.int64, sample[1]
+    assert len(sample[0].shape) == 4, sample[0].shape
+    assert len(sample[1].shape) == 1, sample[1].shape
+    assert sample[0].shape[0] == 32, sample[0].shape
+    assert sample[1].shape[0] == 32, sample[1].shape
+    assert sample[0].shape[1] == 3, sample[0].size()
+    wl.terminate()
+
+def test_MultiWebLoader_torch_pipe():
+    import torch
+    def f(source):
+        for sample in source:
+            assert isinstance(sample, (list, tuple))
+            assert len(sample)==2
+            yield sample
+    wl  = loader.MultiWebLoader("testdata/sample.tgz", 90,
+                                 multi_pipe=f,
+                                 fields="png cls".split(),
+                                 batch_size=32,
+                                 converters=loader.totorch())
+    for sample in wl :
+        break
+    assert len(sample) == 2
+    assert isinstance(sample[0], torch.Tensor), sample[0]
+    assert isinstance(sample[1], torch.Tensor), sample[1]
+    assert sample[0].dtype == torch.float32, sample[0]
+    assert sample[1].dtype == torch.int64, sample[1]
+    assert len(sample[0].shape) == 4, sample[0].shape
+    assert len(sample[1].shape) == 1, sample[1].shape
+    assert sample[0].shape[0] == 32, sample[0].shape
+    assert sample[1].shape[0] == 32, sample[1].shape
+    assert sample[0].shape[1] == 3, sample[0].size()
+    wl.terminate()
+
