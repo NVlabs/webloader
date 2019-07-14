@@ -101,3 +101,18 @@ def test_TarWriter():
     assert set(samples[3].keys()) == set(
         "__key__ __source__ cls png xml wnid".split()), list(samples[3].keys())
     assert samples[-1]["png"].shape == (400, 300, 3)
+
+def test_TarWriter_jpeg():
+    stream = open("/tmp/test.tgz", "wb")
+    sink = tarrecords.TarWriter(stream)
+    data = (255*np.random.uniform(size=(224, 224, 3))).astype("uint8")
+    sink.write(dict(__key__="hello", jpg=data))
+    sink.close()
+    stream.close()
+    stream = open("/tmp/test.tgz", mode='rb')
+    data = tarrecords.tariterator(stream)
+    samples = list(data)
+    assert len(samples) == 1
+    keys = list(samples[0].keys())
+    assert set(keys) == set("__key__ __source__ jpg".split()), keys
+    assert samples[0]["jpg"].shape == (224, 224, 3)

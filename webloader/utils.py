@@ -19,9 +19,6 @@ import six
 from future import standard_library
 from past.utils import old_div
 
-# Copyright (c) 2017 NVIDIA CORPORATION. All rights reserved.
-# See the LICENSE file for licensing terms (BSD-style).
-
 standard_library.install_aliases()
 
 
@@ -225,7 +222,7 @@ def pildumps(image, format="PNG"):
     Can handle float or uint8 images.
 
     :param image: ndarray representing an image
-    :param format: compression format ("PNG" or "JPEG")
+    :param format: compression format (PNG, JPEG, PPM)
 
     """
     if isinstance(image, np.ndarray):
@@ -234,6 +231,8 @@ def pildumps(image, format="PNG"):
             image = np.clip(image, 0.0, 1.0)
             image = np.array(image * 255.0, 'uint8')
         image = PIL.Image.fromarray(image)
+    if format.upper()=="JPG": format="JPEG"
+    elif format.upper() in ["IMG", "IMAGE"]: format="PPM"
     with six.BytesIO() as result:
         image.save(result, format=format)
         return result.getvalue()
@@ -322,7 +321,7 @@ def autoencode1(data, tname):
     if isinstance(data, (int, float)):
         return bytestr(data)
     elif extension in ["png", "jpg", "jpeg", "img", "image", "pbm", "pgm", "ppm"]:
-        return pildumps(data, extension)
+        return  pildumps(data, extension)
     if extension in ["json", "jsn"]:
         import simplejson
         return bytestr(simplejson.dumps(data))
