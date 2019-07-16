@@ -1,0 +1,60 @@
+#!/usr/bin/python3
+#
+# Copyright (c) 2017-2019 NVIDIA CORPORATION. All rights reserved.
+# This file is part of webloader (see TBD).
+# See the LICENSE file for licensing terms (BSD-style).
+#
+
+import os
+import sys
+import argparse
+import imp
+import time
+
+import webloader as dli
+import matplotlib
+import numpy as np
+from webloader import  loader, utils
+import pickle
+import matplotlib as mpl
+import matplotlib.pylab as plt
+
+parser = argparse.ArgumentParser("""
+Dump data from a web dataset.
+""")
+parser.add_argument("--size", type=int, default=100000000,
+                    help="size of dataset (not used)")
+parser.add_argument("-e", "--epochs", type=int, default=1,
+                    help="number of epochs")
+parser.add_argument("--shuffle", type=int, default=0,
+                    help="shuffle prior to sampling")
+parser.add_argument("url",
+                    help="dataset URL")
+parser.add_argument("-f", "--field", default="ppm;jpg;jpeg;png;img;image", nargs="?",
+                    help="field to be selected")
+parser.add_argument("-s", "--skip", type=int, default=0, nargs="?",
+                    help="number of records to skip initially")
+args = parser.parse_args()
+
+plt.ion()
+
+source = loader.WebLoader(args.url, args.size,
+                          fields=args.field,
+                          shuffle=args.shuffle,
+                          epochs=args.epochs,
+                          batch_size=0)
+
+source = iter(source)
+
+for i, sample in enumerate(source):
+    if i >= args.skip: break
+
+for sample, in source:
+    try:
+        plt.imshow(sample)
+        plt.show()
+        plt.waitforbuttonpress()
+    except Exception as e:
+        print(e)
+        print(sample)
+        time.sleep(1)

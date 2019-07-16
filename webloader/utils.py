@@ -233,8 +233,12 @@ def pildumps(image, format="PNG"):
         image = PIL.Image.fromarray(image)
     if format.upper()=="JPG": format="JPEG"
     elif format.upper() in ["IMG", "IMAGE"]: format="PPM"
+    if format=="JPEG":
+        opts = dict(quality=100)
+    else:
+        opts = dict()
     with six.BytesIO() as result:
-        image.save(result, format=format)
+        image.save(result, format=format, **extra)
         return result.getvalue()
 
 
