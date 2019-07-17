@@ -189,8 +189,12 @@ class WebLoader(object):
         :param epochs: number of epochs to iterate for (Default value = 1)
         :param pipeline: pipeline to apply to samples before field extraction (Default value = None)
         :param verbose: output extra information (Default value = False)
-
+        :param use_tracker: ignored (for interface compatiblity with MultiWebLoader)
+        :param use_torch_mp: ignored (for interface compatiblity with MultiWebLoader)
+        :param processes: ignored (for interface compatiblity with MultiWebLoader)
+        :param queue_size: ignored (for interface compatiblity with MultiWebLoader)
         """
+
         self.shuffle = shuffle
         self.shardshuffle = shardshuffle if shardshuffle is not None else shuffle
         self.url_or_generator = url_or_generator
@@ -279,21 +283,38 @@ def maybe_gpu(a, device=None, non_blocking=False):
     else:
         return a
 
+def sync_gpu_transfer(device="cuda"):
+    def f(source):
+        for data in source:
+            if isinstance(data, (tuple, list)):
+                data = [maybe_gpu(a, device, True) for a in data]
+            elif isinstance(data, dict):
+                data = {k: maybe_gpu(a, device, True) for k, a in data.items()}
+            yield data
+    return f
+
 def async_gpu_transfer(device="cuda", inflight=2):
     def f(source):
         q = collections.deque()
-        while True:
-            while len(q) < inflight:
-                data = next(source)
+        done = False
+        while not done:
+            while not done and len(q) < inflight:
+                try:
+                    data = next(source)
+                except StopIteration:
+                    done = True
+                    break
                 if isinstance(data, (tuple, list)):
                     data = [maybe_gpu(a, device, True) for a in data]
                 elif isinstance(data, dict):
                     data = {k: maybe_gpu(a, device, True) for k, a in data.items()}
                 q.append(data)
             yield q.popleft()
+            if done and len(q) == 0: break
     return f
 
 multi_pipes = dict(
+    sync_gpu_transfer=sync_gpu_transfer(),
     async_gpu_transfer=async_gpu_transfer()
 )
 

@@ -1,0 +1,7 @@
+These are miscellaneous example notebooks that illustrate some uses of the
+webloader (formerly dlinputs) library
+
+These notebooks are NOT MAINTAINED. Meaning, they were used at one point
+to do something, but they are not regularly tested against the current
+version of the library. They may still provide a useful starting point for
+something you want to do.
