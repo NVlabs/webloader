@@ -23,4 +23,5 @@ setup(
     description="Input pipelines for deep learning.",
     packages=["webloader"],
     scripts=scripts,
+    install_requires="braceexpand".split()
 )

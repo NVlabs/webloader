@@ -363,11 +363,12 @@ class TarWriter(object):
 
         """
         if isinstance(fileobj, str):
-            if compress is None:
-                compress = fileobj.endswith("gz")
-            else:
-                compress = False
+            if compress is False: mode = "w|"
+            elif compress is True: mode = "w|gz"
+            else: mode = "w|gz" if fileobj.endswith("gz") else "w|"
             fileobj = open(fileobj, "wb")
+        else:
+            mode = "w|gz" if compress is True else "w|"
         if encode is True:
             encode = utils.autoencode
         elif encode is False:
@@ -375,7 +376,6 @@ class TarWriter(object):
         self.keep_meta = keep_meta
         self.encode = encode
         self.stream = fileobj
-        mode = "w" if not compress else "w:gz"
         self.tarstream = tarfile.open(fileobj=fileobj, mode=mode)
         self.user = user or getpass.getuser()
         self.group = group or socket.gethostname()
