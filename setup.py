@@ -15,6 +15,13 @@ if sys.version_info < (3, 6):
     sys.exit("Python versions less than 3.6 are not supported")
 
 scripts = glob.glob("wl-*[a-z]")
+prereqs = """
+    braceexpand
+    numpy
+    bz2
+    six
+    PIL
+""".split()
 
 setup(
     name='webloader',
@@ -23,5 +30,5 @@ setup(
     description="Input pipelines for deep learning.",
     packages=["webloader"],
     scripts=scripts,
-    install_requires="braceexpand".split()
+    install_requires=prereqs,
 )
