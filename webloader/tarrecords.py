@@ -349,7 +349,7 @@ def tariterator(fileobj, check_sorted=False, keys=base_plus_ext, decode=True,
 
 class TarWriter(object):
     """ """
-    def __init__(self, fileobj, keep_meta=False, encode=True, user=None, group=None):
+    def __init__(self, fileobj, keep_meta=False, encode=True, user=None, group=None, compress=None):
         """A class for writing dictionaries to tar files.
 
         :param fileobj: fileobj: file name for tar file (.tgz)
@@ -359,9 +359,14 @@ class TarWriter(object):
         :param encode:  (Default value = True)
         :param user:  (Default value = None)
         :param group:  (Default value = None)
+        :param compress:  (Default value = None)
 
         """
         if isinstance(fileobj, str):
+            if compress is None:
+                compress = fileobj.endswith("gz")
+            else:
+                compress = False
             fileobj = open(fileobj, "wb")
         if encode is True:
             encode = utils.autoencode
@@ -370,7 +375,8 @@ class TarWriter(object):
         self.keep_meta = keep_meta
         self.encode = encode
         self.stream = fileobj
-        self.tarstream = tarfile.open(fileobj=fileobj, mode="w:gz")
+        mode = "w" if not compress else "w:gz"
+        self.tarstream = tarfile.open(fileobj=fileobj, mode=mode)
         self.user = user or getpass.getuser()
         self.group = group or socket.gethostname()
 
@@ -444,7 +450,8 @@ class TarWriter(object):
 
 class ShardWriter(object):
     """ """
-    def __init__(self, pattern, maxcount=100000, maxsize=3e9, keep_meta=False, encode=True, user=None, group=None):
+    def __init__(self, pattern, maxcount=100000, maxsize=3e9, keep_meta=False,
+                 encode=True, user=None, group=None, compress=None):
         """Like TarWriter but splits into multiple shards.
 
         :param pattern: 
@@ -454,11 +461,12 @@ class ShardWriter(object):
         :param encode:  (Default value = True)
         :param user:  (Default value = None)
         :param group:  (Default value = None)
+        :param compress:  (Default value = None)
 
         """
         self.verbose = 1
         self.args = dict(keep_meta=keep_meta, encode=encode,
-                         user=user, group=group)
+                         user=user, group=group, compress=compress)
         self.maxcount = maxcount
         self.maxsize = maxsize
         self.tarstream = None

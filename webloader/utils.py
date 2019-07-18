@@ -238,7 +238,7 @@ def pildumps(image, format="PNG"):
     else:
         opts = dict()
     with six.BytesIO() as result:
-        image.save(result, format=format, **extra)
+        image.save(result, format=format, **opts)
         return result.getvalue()
 
 
