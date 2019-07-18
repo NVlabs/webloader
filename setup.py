@@ -20,6 +20,8 @@ prereqs = """
     numpy
     six
     Pillow
+    simplejson
+    msgpack
 """.split()
 
 setup(
