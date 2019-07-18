@@ -18,7 +18,6 @@ scripts = glob.glob("wl-*[a-z]")
 prereqs = """
     braceexpand
     numpy
-    bz2
     six
     PIL
 """.split()
