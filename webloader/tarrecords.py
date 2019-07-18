@@ -26,7 +26,7 @@ from . import utils
 
 standard_library.install_aliases()
 
-errors_are_fatal = int(os.environ("WL_FATAL_ERRORS", 0))
+errors_are_fatal = int(os.environ.get("WL_FATAL_ERRORS", 0))
 
 
 class TarError(Exception):
