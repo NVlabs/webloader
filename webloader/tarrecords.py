@@ -320,7 +320,7 @@ def tariterator(fileobj, check_sorted=False, keys=base_plus_ext, decode=True,
                     if fatal:
                         raise ValueError(filename, "decoding error", current_prefix) from exn
                     else:
-                        warnings.warn("{}: decoding error".format(current_prefix))
+                        warnings.warn("{}: {}: decoding error {}".format(filename, current_prefix, repr(exn)))
             current_prefix = prefix
             current_sample = dict(__key__=prefix, __source__=source)
         try:
