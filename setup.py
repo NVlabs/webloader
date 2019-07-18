@@ -19,7 +19,7 @@ prereqs = """
     braceexpand
     numpy
     six
-    PIL
+    Pillow
 """.split()
 
 setup(
