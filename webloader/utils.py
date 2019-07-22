@@ -248,14 +248,14 @@ format_table = {"png": "PNG-PIL", "jpg": "JPEG-PIL", "jpeg": "JPEG-PIL"}
 
 
 def autodecode1(data, tname, imagetype="rgb"):
-    # Unicode change. If it is alread an unicode string, no decoding (Byte->Unicode req)
+    # Unicode change. If it is already an unicode string, no decoding (Byte->Unicode req)
     if isinstance(data, (int, float, unicode)):
         return data
     if sys.version_info[0] == 2:
         # Then, it has to be byte string, which is also of type str
         assert isinstance(data, (str, buffer)), type(data)
     else:
-        # In Python 3, it has to be a bytes string at this point. You've checked if it is normal string above (unicode check)
+        # In Python 3, it has to be a bytes string at this point. Already verified if it is a normal string above (unicode check)
         assert isinstance(data, bytes), type(data)
     assert isinstance(tname, str), tname
     extension = re.sub(r".*\.", "", tname).lower()
