@@ -200,7 +200,7 @@ def sharditerator(url, epochs=1000000, shuffle=True, maxerrs=10, verbose=gopen_v
                 if status!=0 and warn_pipe_exit:
                     print("exit", status, "for:", getattr(stream, "pipe_cmd"))
             if errs >= maxerrs:
-                raise exn
+                raise RuntimeError("Number of exceptions exceeded the limit!")
             if verbose: print("finishing", shard, flush=True)
 
 
