@@ -78,7 +78,10 @@ def totorch(dtype=None, device="cpu", transpose=True):
                 a = a.transpose(2, 0, 1)
             elif a.ndim == 4 and a.shape[3] in [3, 4]:
                 a = a.transpose(0, 3, 1, 2)
-            return torch.as_tensor(a, device=device, dtype=dtype_)
+            if device=="numpy":
+                return a
+            else:
+                return torch.as_tensor(a, device=device, dtype=dtype_)
         else:
             return a
     return f
@@ -133,6 +136,8 @@ def listify(x):
 converter_table = dict(
     torch=totorch(),
     torch_cuda=totorch(device="cuda"),
+    torch_np=totorch(device="numpy"), # torch conventions, NumPy representation
+    torch_numpy=totorch(device="numpy"), # torch conventions, NumPy representation
     numpy=tonumpy()
 )
 
@@ -287,6 +292,9 @@ def make_loader(args, kw, queue, index):
         queue.put(sample)
 
 def maybe_gpu(a, device=None, non_blocking=False):
+    if isinstance(a, ndarray):
+        import torch
+        a = torch.from_numpy(a)
     if isinstance(a, TorchTensor):
         return a.contiguous().to(device=device, non_blocking=non_blocking)
     else:
@@ -329,21 +337,23 @@ multi_pipes = dict(
 
 class MultiWebLoader(object):
     """Multiprocessing version of WebLoader """
-    def __init__(self, urls, size, processes=4, use_torch_mp=False, queue_size=10, multi_pipe=None, **kw):
+    def __init__(self, urls, batches, epochs=1,
+                 processes=4, use_torch_mp=False, queue_size=10, multi_pipe=None, **kw):
         """Instantiate multiple WebLoaders in parallel.
 
         :param urls: input URLs
-        :param size: formal size of dataset
+        :param batches: formal size of dataset
+        :param epochs: number of epochs
         :param processes: number of subprocesses to use (Default value = 4)
         :param use_torch_mp: use the Torch version of multiprocessing (Default value = False)
         :param queue_size: number of samples buffered in the queue (Default value = 10)
         :param **kw: other keyword arguments are passed to WebLoader
 
         """
-        assert "epochs" not in kw, kw
-        kw["epochs"] = 999999999
-        self.size = size
-        self.args = (urls, size)
+        self.batches = batches
+        self.epochs = epochs
+        # TODO: split up shards among subprocesses
+        self.args = (urls, batches)
         self.kw = kw
         self.use_torch_mp = use_torch_mp
         self.processes = processes
@@ -357,30 +367,20 @@ class MultiWebLoader(object):
 
         Note that multiple iterators share the same input queue."""
         if self.use_torch_mp:
-            try:
-                import torch.multiprocessing as mp
-            except:
-                import multiprocessing as mp
+            import torch.multiprocessing as mp
         else:
             import multiprocessing as mp
-        while True:
-            if self.jobs is None:
-                #print("starting jobs")
-                self.queue = mp.Queue(self.queue_size)
-                self.jobs = [mp.Process(target=make_loader, args=(self.args, self.kw, self.queue, i))
-                             for i in range(self.processes)]
-                for job in self.jobs:
-                    job.start()
-            try:
-                while True:
-                    sample = self.queue.get()
-                    yield sample
-            except FileNotFoundError as exn:
-                print("restarting MultiWebLoader jobs")
-                #print("got exception in mp:", exn)
-                #print("terminating jobs")
-                self.terminate()
-                #print("done terminating")
+        total = 0
+        if self.jobs is None:
+            self.queue = mp.Queue(self.queue_size)
+            self.jobs = [mp.Process(target=make_loader, args=(self.args, self.kw, self.queue, i))
+                         for i in range(self.processes)]
+            for job in self.jobs:
+                job.start()
+        while total < self.batches * self.epochs:
+            sample = self.queue.get()
+            total += 1
+            yield sample
 
     def __iter__(self):
         result = self.raw_iter()
@@ -390,7 +390,7 @@ class MultiWebLoader(object):
 
     def __len__(self):
         """ """
-        return self.size
+        return self.batches
 
     def terminate(self, soft=False):
         """Terminate all subprocesses"""

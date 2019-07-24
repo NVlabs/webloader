@@ -190,3 +190,12 @@ def test_MultiWebLoader_torch_pipe():
     assert sample[0].shape[1] == 3, sample[0].size()
     wl.terminate()
 
+def test_MultiWebLoader_batching_epochs1():
+    wl = loader.MultiWebLoader("testdata/imagenet-000000.tgz", 7,
+                               fields="__key__ ppm;jpg;jpeg;png cls".split(),
+                               batch_size=10,
+                               tensor_batches=False,
+                               processes=4)
+    total = count_samples(wl)
+    assert total==70, total
+    wl.terminate()
