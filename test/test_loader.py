@@ -93,10 +93,70 @@ def test_WebLoader_torch():
     assert sample[1].shape[0] == 32, sample[1].shape
     assert sample[0].shape[1] == 3, sample[0].size()
 
+def test_WebLoader_no_batching_epochs():
+    for nepochs in [1, 2, 3]:
+        for nbatches in [40, 80, 120, 160]:
+            wl  = loader.WebLoader("testdata/imagenet-000000.tgz", nbatches,
+                                   epochs=nepochs,
+                                   fields="__key__ ppm;jpg;jpeg;png cls".split())
+            total = 0
+            for sample in wl :
+                total += 1
+            assert total==min(nbatches, nepochs*47), (total, min(nbatches, nepochs*47))
+
+def webloader(**kw):
+    return loader.WebLoader("testdata/imagenet-000000.tgz",
+                       fields="__key__ ppm;jpg;jpeg;png cls".split(),
+                       **kw)
+def count_samples(source):
+    print("> count_samples")
+    total = 0
+    for i, sample in enumerate(source):
+        print(len(sample[0]), "::", "\t".join([repr(x)[:50] for x in sample]))
+        total += len(sample[0])
+    print("< count_samples")
+    return total
+
+def test_WebLoader_batching_epochs1():
+    wl = webloader(batches=5, epochs=1,
+                   batch_size=dict(batch_size=10, combine_tensors=False))
+    total = count_samples(wl)
+    assert total==47, total
+
+def test_WebLoader_batching_epochs2():
+    wl = webloader(batches=10, epochs=2,
+                   batch_size=dict(batch_size=10, combine_tensors=False))
+    total = count_samples(wl)
+    assert total==94, total
+
+def test_WebLoader_batching_epochs3():
+    wl = webloader(batches=8, epochs=2,
+                   batch_size=dict(batch_size=10, combine_tensors=False))
+    total = count_samples(wl)
+    assert total==77, total
+
+def test_WebLoader_batching_epochs4():
+    wl = webloader(batches=10, epochs=1,
+                   batch_size=dict(batch_size=10, combine_tensors=False, partial=False))
+    total = count_samples(wl)
+    assert total==40, total
+
+def test_WebLoader_batching_epochs5():
+    wl = webloader(batches=50, epochs=2,
+                   batch_size=dict(batch_size=10, combine_tensors=False, partial=False))
+    total = count_samples(wl)
+    assert total==80, total
+
+def test_WebLoader_batching_iterator_epochs():
+    wl = webloader(batches=10, epochs=1, iterator_epochs=9999,
+                   batch_size=dict(batch_size=10, combine_tensors=False, partial=False))
+    total = count_samples(wl)
+    assert total==100, total
+
 def test_loader_test():
     wl  = loader.WebLoader("testdata/sample.tgz", 90,
-                                 fields="png cls".split(),
-                                 batch_size=32)
+                           fields="png cls".split(),
+                           batch_size=32)
     loader.loader_test(wl)
 
 def test_MultiWebLoader_torch():
@@ -128,7 +188,7 @@ def test_MultiWebLoader_torch_pipe():
             yield sample
     wl  = loader.MultiWebLoader("testdata/sample.tgz", 90,
                                  multi_pipe=f,
-                                 fields="png cls".split(),
+                                 fields="ppm;jpg;jpeg;png cls".split(),
                                  batch_size=32,
                                  converters=loader.totorch())
     for sample in wl :

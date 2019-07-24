@@ -158,16 +158,17 @@ class WebLoader(object):
     """Iterate over sharded datasets."""
     def __init__(self,
                  url_or_generator,
-                 size,
+                 batches,
+                 epochs=1,
+                 iterator_epochs=1,
                  fields=None,
-                 batch_size=0,
+                 batch_size=None,
                  shuffle=0,
                  shardshuffle=None,
                  transforms=None,
                  batch_transforms=None,
                  converters=None,
                  decode=True,
-                 epochs=1,
                  pipeline=None,
                  verbose=False,
                  use_tracker=True,
@@ -195,13 +196,16 @@ class WebLoader(object):
         :param queue_size: ignored (for interface compatiblity with MultiWebLoader)
         """
 
+        self.debug = int(os.environ.get("DEBUG_WEBLOADER", 0))
         self.shuffle = shuffle
         self.shardshuffle = shardshuffle if shardshuffle is not None else shuffle
         self.url_or_generator = url_or_generator
-        self.size = size
-        if epochs < 0: epochs = (1<<30)
+        self.batches = batches
         self.epochs = epochs
+        self.iterator_epochs = iterator_epochs
         self.decode = decode
+        if isinstance(batch_size, int):
+            batch_size = dict(batch_size=batch_size)
         self.batch_size = batch_size
         if isinstance(pipeline, list):
             pipeline = filters.compose(pipeline)
@@ -222,15 +226,16 @@ class WebLoader(object):
 
     def __iter__(self):
         """Iterate over samples."""
-        total = 0
-        ntrain = self.epochs * self.size
         finished = False
-        self.count = 0
-        while not finished:
+        self.sample = 0
+        self.epoch = 0
+        self.batch = 0
+        while self.epoch < self.epochs:
+            if self.batch >= self.batches: break
             if isinstance(self.url_or_generator, str):
                 source = gopen.sharditerator(self.url_or_generator,
                                              shuffle=self.shardshuffle,
-                                             epochs=self.epochs,
+                                             epochs=self.iterator_epochs,
                                              decode=self.decode,
                                              verbose=self.verbose)
             elif hasattr(self.url_or_generator, "__iter__"):
@@ -247,13 +252,12 @@ class WebLoader(object):
                 source = filters.transform(transformer(self.transforms))(source)
             if self.shuffle > 0:
                 source = filters.shuffle(self.shuffle)(source)
-            if self.batch_size > 0:
-                source = filters.batched(self.batch_size)(source)
-            self.count = 0
+            if self.batch_size is not None:
+                bs = self.batch_size.get("batch_size", 64)
+                ct = self.batch_size.get("combine_tensors", True)
+                cs = self.batch_size.get("combine_scalars", True)
+                source = filters.batched(**self.batch_size)(source)
             for sample in source:
-                if total >= ntrain:
-                    finished = True
-                    break
                 if self.batch_transforms is not None:
                     if isinstance(sample, dict):
                         raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
@@ -263,13 +267,21 @@ class WebLoader(object):
                         raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
                     sample = transform_with(sample, self.converters)
                 self.last_sample = sample
-                total += max(1, self.batch_size)
+                self.batch += 1
+                try: self.sample += len(sample[0])
+                except: self.sample = -999999
+                if self.debug>=200:
+                    for i, x in enumerate(sample):
+                        print(i, self.sample, type(x), repr(x)[:50], x.shape if hasattr(x, "shape") else None)
+                elif self.debug==199:
+                    print("epoch", self.epoch, "batch", self.batch, "sample", self.sample, "::", repr(sample)[:50])
                 yield sample
-                self.count += 1
+                if self.batch >= self.batches: break
+            self.epoch += 1
 
     def __len__(self):
         """Return the length of the dataset (the size argument passed on initialization)."""
-        return self.size
+        return self.batches
 
 def make_loader(args, kw, queue, index):
     kw["use_tracker"] = False

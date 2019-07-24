@@ -49,3 +49,17 @@ def test_sharditerator_once():
         break
     assert set(["__key__", "png"]) < set(sample.keys()), list(sample.keys())
 
+def test_sharditerator_epochs():
+    url = "testdata/imagenet-000000.tgz"
+    data = gopen.sharditerator(url, epochs=1)
+    total = 0
+    for sample in data:
+        total += 1
+        assert total < 1000
+    assert total == 47
+    data = gopen.sharditerator(url, epochs=2)
+    total2 = 0
+    for sample in data:
+        total2 += 1
+        assert total2 < 1000
+    assert total2 == 2*total

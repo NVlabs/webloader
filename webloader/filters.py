@@ -456,11 +456,11 @@ def diskshuffle(data, bufsize=1000, initial=100, fname=None):
 
 
 @curried
-def batched(data, batchsize=20, combine_tensors=True, combine_scalars=True, partial=True, expand=False):
+def batched(data, batch_size=20, combine_tensors=True, combine_scalars=True, partial=True, expand=False):
     """Create batches of the given size.
 
     :param data: iterator
-    :param batchsize: target batch size
+    :param batch_size: target batch size
     :param tensors: automatically batch lists of ndarrays into ndarrays
     :param partial: return partial batches
     :returns: iterator
@@ -468,7 +468,7 @@ def batched(data, batchsize=20, combine_tensors=True, combine_scalars=True, part
     """
     batch = []
     for sample in data:
-        if len(batch) >= batchsize:
+        if len(batch) >= batch_size:
             yield utils.samples_to_batch(batch,
                                          combine_tensors=combine_tensors,
                                          combine_scalars=combine_scalars,
@@ -477,7 +477,7 @@ def batched(data, batchsize=20, combine_tensors=True, combine_scalars=True, part
         batch.append(sample)
     if len(batch) == 0:
         return
-    elif len(batch) == batchsize or partial:
+    elif len(batch) == batch_size or partial:
         yield utils.samples_to_batch(batch,
                                      combine_tensors=combine_tensors,
                                      combine_scalars=combine_scalars,
@@ -558,11 +558,11 @@ def standardized(data, size, keys=["image"], crop=0, mode="nearest"):
 
 
 @curried
-def batchedbuckets(data, batchsize=5, scale=1.8, seqkey="image", batchdim=1):
+def batchedbuckets(data, batch_size=5, scale=1.8, seqkey="image", batchdim=1):
     """List-batch input samples into similar sized batches.
 
     :param data: iterator of samples
-    :param batchsize: target batch size
+    :param batch_size: target batch size
     :param scale: spacing of bucket sizes
     :param seqkey: input key to use for batching
     :param batchdim: input dimension to use for bucketing
@@ -580,7 +580,7 @@ def batchedbuckets(data, batchsize=5, scale=1.8, seqkey="image", batchdim=1):
                 batched[k].append(v)
             else:
                 batched[k] = [v]
-        if len(batched[seqkey]) >= batchsize:
+        if len(batched[seqkey]) >= batch_size:
             batched["_bucket"] = r
             yield batched
             batched = {}

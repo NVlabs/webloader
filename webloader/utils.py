@@ -377,9 +377,13 @@ def samples_to_batch(samples, combine_tensors=True, combine_scalars=True, expand
             result[k].append(samples[i][k])
     for k in list(result.keys()):
         if combine_tensors and isinstance(result[k][0], np.ndarray):
+            shapeset = set(tuple(a.shape) for a in result[k])
+            assert len(shapeset) == 1, shapeset
             result[k] = np.array(result[k])
         elif combine_tensors and "torch" in str(type(result[k][0])):
             import torch
+            shapeset = set(tuple(a.shape) for a in result[k])
+            assert len(shapeset) == 1, shapeset
             if isinstance(result[k][0], torch.Tensor):
                 result[k] = torch.stack(result[k])
         elif combine_scalars != False and isinstance(result[k][0], (int, float)):

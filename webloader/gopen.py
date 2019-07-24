@@ -160,22 +160,29 @@ def verify_shards(url, report=print, nrecords=1, verbose=False, **kw):
 
 def sharditerator(url, epochs=1000000, shuffle=True, maxerrs=10, verbose=gopen_verbose, **kw):
     """Iterate over sharded tar records."""
+    debug = int(os.environ.get("DEBUG_SHARDITERATOR", 0))
     shards = list(paths.path_shards(url))
     if verbose: 
         print("sharditerator over", len(shards), "shards:", str(shards)[:20], flush=True)
     for epoch in range(epochs):
+        if debug: print("SHARDITERATOR", "epoch", epoch)
         if shuffle:
             random.shuffle(shards)
         errs = 0
+        if debug: print("SHARDITERATOR", "#shards", len(shards))
         for shard in shards:
+            if debug: print("SHARDITERATOR", "shard", shard)
             if verbose: print("starting", shard, flush=True)
             stream = None
             try:
+                total = 0
                 stream = gopen(shard)
                 for sample in tarrecords.tariterator(stream, **kw):
                     errs = max(0, errs-1)
                     sample["__source__"] = shard
+                    total += 1
                     yield sample
+                if debug: print("SHARDITERATOR", "total", total)
             except tarrecords.TarError as exn:
                 logging.error("TarError: {}".format(str(exn)))
                 if gopen_fatal or errs>maxerrs:
