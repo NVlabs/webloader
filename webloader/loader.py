@@ -160,9 +160,10 @@ class WebLoader(object):
                  url_or_generator,
                  batches,
                  epochs=1,
-                 iterator_epochs=1,
                  fields=None,
                  batch_size=None,
+                 tensor_batches=True,
+                 partial_batches=True,
                  shuffle=0,
                  shardshuffle=None,
                  transforms=None,
@@ -181,13 +182,15 @@ class WebLoader(object):
         :param size: formal size of the dataset (used by len() function)
         :param fields: fields to extract (Default value = None)
         :param batch_size: batch size to return (Default value = 0, no batching)
+        :param partial_batches: return partial batches if necessary (Default value = True)
+        :param tensor_batches: stack tensors in batches into tensors (Default value = True)
         :param shuffle: shuffle size (Default value = 0, no shuffle)
         :param shardshuffle: shuffle shards (Default value = None, shuffle shards if shuffling)
         :param transforms: list of functions to apply to unbatched samples (Default value = None)
         :param batch_transforms: list of functions to apply to batched samples (Default value = None)
         :param converters: list of functions to apply after batch_transforms (Default value = None)
         :param decode: decoder to apply to tarfiles (Default value = True)
-        :param epochs: number of epochs to iterate for (Default value = 1)
+        :param epochs: number of epochs to iterate for (Default value = 1, only used with sharditerators)
         :param pipeline: pipeline to apply to samples before field extraction (Default value = None)
         :param verbose: output extra information (Default value = False)
         :param use_tracker: ignored (for interface compatiblity with MultiWebLoader)
@@ -202,11 +205,10 @@ class WebLoader(object):
         self.url_or_generator = url_or_generator
         self.batches = batches
         self.epochs = epochs
-        self.iterator_epochs = iterator_epochs
         self.decode = decode
-        if isinstance(batch_size, int):
-            batch_size = dict(batch_size=batch_size)
         self.batch_size = batch_size
+        self.tensor_batches = tensor_batches
+        self.partial_batches = partial_batches
         if isinstance(pipeline, list):
             pipeline = filters.compose(pipeline)
         self.pipeline = pipeline
@@ -228,56 +230,51 @@ class WebLoader(object):
         """Iterate over samples."""
         finished = False
         self.sample = 0
-        self.epoch = 0
         self.batch = 0
-        while self.epoch < self.epochs:
+        if isinstance(self.url_or_generator, str):
+            source = gopen.sharditerator(self.url_or_generator,
+                                         shuffle=self.shardshuffle,
+                                         epochs=self.epochs,
+                                         decode=self.decode,
+                                         verbose=self.verbose)
+        elif hasattr(self.url_or_generator, "__iter__"):
+            source = iter(self.url_or_generator)
+        else:
+            raise ValueError(f"{self.url_or_generator}: not understood as a source")
+        if self.tracker is not None:
+            source = self.tracker(source)
+        if self.pipeline is not None:
+            source = self.pipeline(source)
+        if self.fields is not None:
+            source = filters.extract(*self.fields)(source)
+        if self.transforms is not None:
+            source = filters.transform(transformer(self.transforms))(source)
+        if self.shuffle > 0:
+            source = filters.shuffle(self.shuffle)(source)
+        if self.batch_size is not None:
+            source = filters.batched(self.batch_size,
+                                     combine_tensors=self.tensor_batches,
+                                     partial=self.partial_batches)(source)
+        for sample in source:
+            if self.batch_transforms is not None:
+                if isinstance(sample, dict):
+                    raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
+                sample = transform_with(sample, self.batch_transforms)
+            if self.converters is not None:
+                if isinstance(sample, dict):
+                    raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
+                sample = transform_with(sample, self.converters)
+            self.last_sample = sample
+            self.batch += 1
+            try: self.sample += len(sample[0])
+            except: self.sample = -999999
+            if self.debug>=200:
+                for i, x in enumerate(sample):
+                    print(i, self.sample, type(x), repr(x)[:50], x.shape if hasattr(x, "shape") else None)
+            elif self.debug==199:
+                print("batch", self.batch, "sample", self.sample, "::", repr(sample)[:50])
+            yield sample
             if self.batch >= self.batches: break
-            if isinstance(self.url_or_generator, str):
-                source = gopen.sharditerator(self.url_or_generator,
-                                             shuffle=self.shardshuffle,
-                                             epochs=self.iterator_epochs,
-                                             decode=self.decode,
-                                             verbose=self.verbose)
-            elif hasattr(self.url_or_generator, "__iter__"):
-                source = iter(self.url_or_generator)
-            else:
-                raise ValueError(f"{self.url_or_generator}: not understood as a source")
-            if self.tracker is not None:
-                source = self.tracker(source)
-            if self.pipeline is not None:
-                source = self.pipeline(source)
-            if self.fields is not None:
-                source = filters.extract(*self.fields)(source)
-            if self.transforms is not None:
-                source = filters.transform(transformer(self.transforms))(source)
-            if self.shuffle > 0:
-                source = filters.shuffle(self.shuffle)(source)
-            if self.batch_size is not None:
-                bs = self.batch_size.get("batch_size", 64)
-                ct = self.batch_size.get("combine_tensors", True)
-                cs = self.batch_size.get("combine_scalars", True)
-                source = filters.batched(**self.batch_size)(source)
-            for sample in source:
-                if self.batch_transforms is not None:
-                    if isinstance(sample, dict):
-                        raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
-                    sample = transform_with(sample, self.batch_transforms)
-                if self.converters is not None:
-                    if isinstance(sample, dict):
-                        raise ValueError("expect list for batch_transforms; did you specify fields= for WebLoader?")
-                    sample = transform_with(sample, self.converters)
-                self.last_sample = sample
-                self.batch += 1
-                try: self.sample += len(sample[0])
-                except: self.sample = -999999
-                if self.debug>=200:
-                    for i, x in enumerate(sample):
-                        print(i, self.sample, type(x), repr(x)[:50], x.shape if hasattr(x, "shape") else None)
-                elif self.debug==199:
-                    print("epoch", self.epoch, "batch", self.batch, "sample", self.sample, "::", repr(sample)[:50])
-                yield sample
-                if self.batch >= self.batches: break
-            self.epoch += 1
 
     def __len__(self):
         """Return the length of the dataset (the size argument passed on initialization)."""

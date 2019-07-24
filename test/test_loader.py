@@ -107,6 +107,7 @@ def test_WebLoader_no_batching_epochs():
 def webloader(**kw):
     return loader.WebLoader("testdata/imagenet-000000.tgz",
                        fields="__key__ ppm;jpg;jpeg;png cls".split(),
+                       tensor_batches=False,
                        **kw)
 def count_samples(source):
     print("> count_samples")
@@ -118,40 +119,24 @@ def count_samples(source):
     return total
 
 def test_WebLoader_batching_epochs1():
-    wl = webloader(batches=5, epochs=1,
-                   batch_size=dict(batch_size=10, combine_tensors=False))
+    wl = webloader(batches=5, epochs=1, batch_size=10)
     total = count_samples(wl)
     assert total==47, total
 
 def test_WebLoader_batching_epochs2():
-    wl = webloader(batches=10, epochs=2,
-                   batch_size=dict(batch_size=10, combine_tensors=False))
-    total = count_samples(wl)
-    assert total==94, total
-
-def test_WebLoader_batching_epochs3():
-    wl = webloader(batches=8, epochs=2,
-                   batch_size=dict(batch_size=10, combine_tensors=False))
-    total = count_samples(wl)
-    assert total==77, total
-
-def test_WebLoader_batching_epochs4():
-    wl = webloader(batches=10, epochs=1,
-                   batch_size=dict(batch_size=10, combine_tensors=False, partial=False))
+    wl = webloader(batches=5, epochs=1, batch_size=10, partial_batches=False)
     total = count_samples(wl)
     assert total==40, total
 
-def test_WebLoader_batching_epochs5():
-    wl = webloader(batches=50, epochs=2,
-                   batch_size=dict(batch_size=10, combine_tensors=False, partial=False))
+def test_WebLoader_batching_epochs3():
+    wl = webloader(batches=10, epochs=2, batch_size=10)
+    total = count_samples(wl)
+    assert total==94, total
+
+def test_WebLoader_batching_epochs4():
+    wl = webloader(batches=8, epochs=2, batch_size=10)
     total = count_samples(wl)
     assert total==80, total
-
-def test_WebLoader_batching_iterator_epochs():
-    wl = webloader(batches=10, epochs=1, iterator_epochs=9999,
-                   batch_size=dict(batch_size=10, combine_tensors=False, partial=False))
-    total = count_samples(wl)
-    assert total==100, total
 
 def test_loader_test():
     wl  = loader.WebLoader("testdata/sample.tgz", 90,
