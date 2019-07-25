@@ -371,16 +371,22 @@ class MultiWebLoader(object):
         else:
             import multiprocessing as mp
         total = 0
-        if self.jobs is None:
-            self.queue = mp.Queue(self.queue_size)
-            self.jobs = [mp.Process(target=make_loader, args=(self.args, self.kw, self.queue, i))
-                         for i in range(self.processes)]
-            for job in self.jobs:
-                job.start()
         while total < self.batches * self.epochs:
-            sample = self.queue.get()
-            total += 1
-            yield sample
+            if self.jobs is None:
+                self.queue = mp.Queue(self.queue_size)
+                self.jobs = [mp.Process(target=make_loader,
+                                        args=(self.args, self.kw, self.queue, i))
+                             for i in range(self.processes)]
+                for job in self.jobs:
+                    job.start()
+            try:
+                while total < self.batches * self.epochs:
+                    sample = self.queue.get()
+                    total += 1
+                    yield sample
+            except FileNotFoundError as exn:
+                print("restarting MultiWebLoader jobs", repr(exn)[:100])
+                self.terminate()
 
     def __iter__(self):
         result = self.raw_iter()
