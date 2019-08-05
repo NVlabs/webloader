@@ -230,6 +230,7 @@ class WebLoader(object):
         if use_tracker:
             self.tracker = Tracker()
         self.verbose = verbose
+        self.sampler = None # for compatibility with DataLoader
 
     def __iter__(self):
         """Iterate over samples."""
@@ -361,6 +362,7 @@ class MultiWebLoader(object):
         self.multi_pipe = multi_pipes.get(multi_pipe, multi_pipe)
         assert self.multi_pipe is None or callable(self.multi_pipe)
         self.jobs = None
+        self.sampler = None # for compatibility with DataLoader
 
     def raw_iter(self):
         """Iterate over samples.
