@@ -82,8 +82,8 @@ def make_gray(image):
     assert isinstance(image, np.ndarray), type(image)
     if image.ndim == 2:
         return image
-    assert image.ndim == 3
-    assert image.shape[2] in [1, 3, 4]
+    assert image.ndim == 3, image.shape
+    assert image.shape[2] in [1, 3, 4], image.shape
     return np.mean(image[:, :, :3], 2)
 
 
@@ -99,7 +99,7 @@ def make_rgb(image):
     assert isinstance(image, np.ndarray), type(image)
     if image.ndim == 2:
         image = image.reshape(image.shape + (1,))
-    assert image.ndim == 3
+    assert image.ndim == 3, image.shape
     if image.shape[2] == 1:
         return np.repeat(image, 3, 2)
     elif image.shape[2] == 3:
@@ -183,18 +183,18 @@ def pilread(stream, color="gray", asfloat=True):
         asfloat = False
         color = color[:-1]
     image = PIL.Image.open(stream)
-    result = np.asarray(image)
-    assert result.dtype == np.uint8, image
     if color is None:
         pass
     elif color == "gray":
-        result = make_gray(result)
+        image = image.convert("L")
     elif color == "rgb":
-        result = make_rgb(result)
+        image = image.convert("RGB")
     elif color == "rgba":
-        result = make_rgba(result)
+        image = image.convert("RGBA")
     else:
         raise ValueError("{}: unknown color space".format(color))
+    result = np.asarray(image)
+    assert result.dtype == np.uint8, (image, result.dtype)
     if asfloat:
         result = result.astype("f") / 255.0
     return result
@@ -363,6 +363,8 @@ def samples_to_batch(samples, combine_tensors=True, combine_scalars=True, expand
     :rtype: dict
 
     """
+    if len(samples) == 0:
+        return None
     if isinstance(samples[0], (tuple, list)):
         samples = [list2dict(x) for x in samples]
         return dict2list(samples_to_batch(samples,

@@ -46,8 +46,7 @@ class Record(object):
 
 source = loader.WebLoader(args.url, args.size,
                           decode=False,
-                          shuffle=args.shuffle,
-                          batch_size=0)
+                          shuffle=args.shuffle)
 
 source = iter(source)
 

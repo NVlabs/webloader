@@ -6,3 +6,5 @@
 
 from .loader import WebLoader, MultiWebLoader, totorch, loader_test
 from .gopen import verify_shards
+
+from .tarrecords import errors_are_fatal
