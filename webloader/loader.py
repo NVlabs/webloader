@@ -13,12 +13,17 @@ import sys
 import logging
 import time
 import collections
+import queue as mpq
 
 from past.utils import old_div
 
 from . import filters, gopen, paths, utils
 
 _big = 1 << 60
+
+def dpr(*args, **kw):
+    print("***", *args, file=sys.stderr, **kw)
+    pass
 
 try:
     from torch import Tensor as TorchTensor
@@ -158,11 +163,10 @@ class Tracker(object):
     def counts(self):
         return self.keys.values()
 
-
 class WebLoader(object):
     """Iterate over sharded datasets."""
     def __init__(self,
-                 url_or_generator,
+                 spec,
                  batches,
                  epochs=1,
                  fields=None,
@@ -177,9 +181,11 @@ class WebLoader(object):
                  decode=True,
                  pipeline=None,
                  verbose=False,
+                 source=None,
                  use_tracker=True,
                  use_torch_mp=False,
                  processes=1,
+                 subset=None,
                  queue_size=1):
         """Create a WebLoader
 
@@ -198,16 +204,19 @@ class WebLoader(object):
         :param epochs: number of epochs to iterate for (Default value = 1, only used with sharditerators)
         :param pipeline: pipeline to apply to samples before field extraction (Default value = None)
         :param verbose: output extra information (Default value = False)
-        :param use_tracker: ignored (for interface compatiblity with MultiWebLoader)
+        :param source: alternative source for iterator
+        :param use_tracker: keep track of statistics
         :param use_torch_mp: ignored (for interface compatiblity with MultiWebLoader)
         :param processes: ignored (for interface compatiblity with MultiWebLoader)
         :param queue_size: ignored (for interface compatiblity with MultiWebLoader)
         """
 
+        if processes != 1:
+            warnings.warn("WebLoader called with processes!=1; use MultiWebLoader for multiprocessing")
         self.debug = int(os.environ.get("DEBUG_WEBLOADER", 0))
         self.shuffle = shuffle
         self.shardshuffle = shardshuffle if shardshuffle is not None else shuffle
-        self.url_or_generator = url_or_generator
+        self.spec = spec
         self.batches = batches
         self.epochs = epochs
         self.decode = decode
@@ -230,6 +239,8 @@ class WebLoader(object):
         if use_tracker:
             self.tracker = Tracker()
         self.verbose = verbose
+        self.subset = subset
+        self.source = source
         self.sampler = None # for compatibility with DataLoader
 
     def __iter__(self):
@@ -237,16 +248,30 @@ class WebLoader(object):
         finished = False
         self.sample = 0
         self.batch = 0
-        if isinstance(self.url_or_generator, str):
-            source = gopen.sharditerator(self.url_or_generator,
+        if self.source is not None:
+            # special case for using an iterator as a source
+            assert spec is None
+            assert self.subset is None
+            source = iter(args.source)
+        else:
+            spec = self.spec
+            if self.subset is not None:
+                # if subset is specified, select the subset here and pass
+                # on to sharditerator as list; subset is specified by
+                # MultiWebLoader
+                i, n = self.subset
+                if isinstance(spec, str):
+                    spec = braceexpand.braceexpand(spec)
+                spec = list(spec)
+                if len(spec) < n and i == 0:
+                    warnings.warn(f"{spec}: subset requires more than {n} shards")
+                if i > n: return
+                spec = spec[i::n]
+            source = gopen.sharditerator(spec,
                                          shuffle=self.shardshuffle,
                                          epochs=self.epochs,
                                          decode=self.decode,
                                          verbose=self.verbose)
-        elif hasattr(self.url_or_generator, "__iter__"):
-            source = iter(self.url_or_generator)
-        else:
-            raise ValueError(f"{self.url_or_generator}: not understood as a source")
         if self.tracker is not None:
             source = self.tracker(source)
         if self.pipeline is not None:
@@ -289,8 +314,10 @@ class WebLoader(object):
 def make_loader(args, kw, queue, index):
     kw["use_tracker"] = False
     data = WebLoader(*args, **kw)
+    total = 0
     for sample in data:
         queue.put(sample)
+        total += 1
 
 def maybe_gpu(a, device=None, non_blocking=False):
     if isinstance(a, ndarray):
@@ -331,6 +358,29 @@ def async_gpu_transfer(device="cuda", inflight=2):
             if done and len(q) == 0: break
     return f
 
+def joinall(jobs):
+    result = []
+    for job in jobs:
+        if not job.is_alive():
+            #dpr(f"{job} finished", file=sys.stderr)
+            job.join()
+        else:
+            result.append(job)
+    return result
+
+def killall(jobs):
+    if jobs is None:
+        return
+    for job in jobs:
+        try:
+            os.kill(job.pid, 15)
+            time.sleep(0.1)
+            os.kill(job.pid, 9)
+            job.terminate()
+            job.join(0.001)
+        except:
+            pass
+
 multi_pipes = dict(
     sync_gpu_transfer=sync_gpu_transfer(),
     async_gpu_transfer=async_gpu_transfer()
@@ -338,8 +388,9 @@ multi_pipes = dict(
 
 class MultiWebLoader(object):
     """Multiprocessing version of WebLoader """
-    def __init__(self, urls, batches, epochs=1,
-                 processes=4, use_torch_mp=False, queue_size=10, multi_pipe=None, **kw):
+    def __init__(self, urls, batches=1000000000,
+                 processes=4, use_torch_mp=False, queue_size=10, multi_pipe=None, 
+                 split=None, **kw):
         """Instantiate multiple WebLoaders in parallel.
 
         :param urls: input URLs
@@ -352,7 +403,6 @@ class MultiWebLoader(object):
 
         """
         self.batches = batches
-        self.epochs = epochs
         # TODO: split up shards among subprocesses
         self.args = (urls, batches)
         self.kw = kw
@@ -361,7 +411,7 @@ class MultiWebLoader(object):
         self.queue_size = queue_size
         self.multi_pipe = multi_pipes.get(multi_pipe, multi_pipe)
         assert self.multi_pipe is None or callable(self.multi_pipe)
-        self.jobs = None
+        self.split = split
         self.sampler = None # for compatibility with DataLoader
 
     def raw_iter(self):
@@ -373,22 +423,33 @@ class MultiWebLoader(object):
         else:
             import multiprocessing as mp
         total = 0
-        while total < self.batches * self.epochs:
-            if self.jobs is None:
-                self.queue = mp.Queue(self.queue_size)
-                self.jobs = [mp.Process(target=make_loader,
-                                        args=(self.args, self.kw, self.queue, i))
-                             for i in range(self.processes)]
-                for job in self.jobs:
-                    job.start()
-            try:
-                while total < self.batches * self.epochs:
-                    sample = self.queue.get()
-                    total += 1
+        jobs = []
+        queue = mp.Queue(self.queue_size)
+        for i in range(self.processes):
+            kwargs = dict(self.kw)
+            if self.split:
+                kwargs["subset"] = (i, self.processes)
+            args=(self.args, kwargs, queue, i)
+            process = mp.Process(target=make_loader, args=args)
+            jobs.append(process)
+        for job in jobs:
+            job.start()
+        try:
+            for i in range(self.batches):
+                jobs = joinall(jobs)
+                if jobs == []: break
+                try:
+                    sample = queue.get(timeout=0.1)
                     yield sample
-            except FileNotFoundError as exn:
-                print("restarting MultiWebLoader jobs", repr(exn)[:100])
-                self.terminate()
+                    total += 1
+                except FileNotFoundError:
+                    pass
+                except mpq.Empty:
+                    pass
+            jobs = joinall(jobs)
+        finally:
+            killall(jobs)
+            pass
 
     def __iter__(self):
         result = self.raw_iter()
@@ -401,22 +462,7 @@ class MultiWebLoader(object):
         return self.batches
 
     def terminate(self, soft=False):
-        """Terminate all subprocesses"""
-        for job in self.jobs:
-            try:
-                if soft:
-                    job.terminate()
-                    job.join()
-                else:
-                    os.kill(job.pid, 15)
-                    time.sleep(0.1)
-                    os.kill(job.pid, 9)
-            except Exception as exn:
-                print(job)
-                print(exn)
-        del self.queue
-        self.jobs = None
-        self.queue = None
+        pass
 
 def asdict(l):
     if isinstance(l, dict):

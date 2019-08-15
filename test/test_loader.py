@@ -10,6 +10,8 @@ import pdb
 from builtins import range
 from imp import reload
 from io import open
+import sys
+import os
 
 import numpy as np
 from webloader import  loader
@@ -109,13 +111,19 @@ def webloader(**kw):
                        fields="__key__ ppm;jpg;jpeg;png cls".split(),
                        tensor_batches=False,
                        **kw)
-def count_samples(source):
-    print("> count_samples")
+def count_samples(source, verbose=False, max=100000, batched=True):
+    verbose = int(os.environ.get("TEST_VERBOSE", "0"))
+    if verbose > 0:
+        print("> count_samples", file=sys.stderr)
     total = 0
     for i, sample in enumerate(source):
-        print(len(sample[0]), "::", "\t".join([repr(x)[:50] for x in sample]))
-        total += len(sample[0])
-    print("< count_samples")
+        if verbose > 1: print(len(sample[0]), "::", "\t".join([repr(x)[:50] for x in sample]))
+        elif verbose > 0: print(i, file=sys.stderr, end=" ", flush=True)
+        total += len(sample[0]) if batched else 1
+        assert total < max
+    if verbose > 0:
+        print("\n", file=sys.stderr)
+        print("< count_samples", file=sys.stderr)
     return total
 
 def test_WebLoader_batching_epochs1():
@@ -137,6 +145,14 @@ def test_WebLoader_batching_epochs4():
     wl = webloader(batches=8, epochs=2, batch_size=10)
     total = count_samples(wl)
     assert total==80, total
+
+def test_WebLoader_listarg():
+    wl = loader.WebLoader(["testdata/imagenet-000000.tgz"]*3,
+                          fields="__key__ ppm;jpg;jpeg;png cls".split(),
+                          tensor_batches=False,
+                          batches=10000, epochs=1, batch_size=10)
+    total = count_samples(wl)
+    assert total==3*47, total
 
 def test_loader_test():
     wl  = loader.WebLoader("testdata/sample.tgz", 90,
@@ -162,7 +178,6 @@ def test_MultiWebLoader_torch():
     assert sample[0].shape[0] == 32, sample[0].shape
     assert sample[1].shape[0] == 32, sample[1].shape
     assert sample[0].shape[1] == 3, sample[0].size()
-    wl.terminate()
 
 def test_MultiWebLoader_torch_pipe():
     import torch
@@ -188,14 +203,26 @@ def test_MultiWebLoader_torch_pipe():
     assert sample[0].shape[0] == 32, sample[0].shape
     assert sample[1].shape[0] == 32, sample[1].shape
     assert sample[0].shape[1] == 3, sample[0].size()
-    wl.terminate()
+
+def test_MultiWebLoader_batching_split():
+    repeats = 4
+    wl = loader.MultiWebLoader(["testdata/imagenet-000000.tgz"]*repeats, 2000,
+                               split=True,
+                               epochs=1,
+                               fields="__key__ ppm;jpg;jpeg;png cls".split(),
+                               tensor_batches=False,
+                               processes=4)
+    total = count_samples(wl, verbose=1, max=1000, batched=False)
+    assert total==47*repeats, total
 
 def test_MultiWebLoader_batching_epochs1():
-    wl = loader.MultiWebLoader("testdata/imagenet-000000.tgz", 7,
+    nbatches = 3
+    bs = 8
+    wl = loader.MultiWebLoader(["testdata/imagenet-000000.tgz"]*4, nbatches,
                                fields="__key__ ppm;jpg;jpeg;png cls".split(),
-                               batch_size=10,
+                               batch_size=bs,
                                tensor_batches=False,
                                processes=4)
     total = count_samples(wl)
-    assert total==70, total
-    wl.terminate()
+    assert total==nbatches*bs, total
+
